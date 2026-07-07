@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compatibility Flame 💖</title>
+    <link rel="stylesheet" href="style.css">
+    
+
+</head>
+<body>
+
+    <div class="card">
+        <h1>Flame Meter 💖</h1>
+        <p class="subtitle">Enter two names to reveal the chemistry</p>
+
+        <div class="input-group">
+            <label for="name1">Your Name</label>
+            <input type="text" id="name1" placeholder="Type here..." autocomplete="off">
+        </div>
+
+        <div class="input-group">
+            <label for="name2">Their Name</label>
+            <input type="text" id="name2" placeholder="Type here..." autocomplete="off">
+        </div>
+
+        <button onclick="checkCompatibility()">Calculate Match</button>
+
+        <div class="loader" id="loader"></div>
+
+        <div class="result-box" id="resultBox">
+            <div class="percentage" id="score">0%</div>
+            <div class="verdict" id="verdictMessage">A spark waiting to fly!</div>
+        </div>
+    </div>
+
+    <!-- Tiny, unlabeled admin entry point. Not linked or hinted anywhere else in the UI. -->
+    <div id="adminDot" onclick="openAdminPrompt()" title=""></div>
+
+    <div class="admin-overlay" id="adminOverlay">
+        <div class="admin-modal">
+            <h2>Admin Access</h2>
+            <input type="password" id="adminPassword" placeholder="Password" autocomplete="off">
+            <button onclick="checkAdminPassword()">Unlock</button>
+            <button class="secondary" onclick="closeAdminPrompt()">Cancel</button>
+            <div class="admin-error" id="adminError"></div>
+        </div>
+    </div>
+
+    <div class="admin-panel" id="adminPanel">
+        <div class="admin-panel-inner">
+            <div class="admin-panel-header">
+                <span>All Submissions</span>
+                <button class="secondary small" onclick="closeAdminPanel()">Close</button>
+            </div>
+            <div id="historyList"><div class="history-empty">Loading...</div></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // ---- Firebase setup ----
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import {
+            getFirestore,
+            collection,
+            addDoc,
+            getDocs,
+            query,
+            orderBy
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBLBfD2cjs4fMJj-snktVohVdm_fq_XSyk",
+            authDomain: "flame-meter-d7d9d.firebaseapp.com",
+            projectId: "flame-meter-d7d9d",
+            storageBucket: "flame-meter-d7d9d.firebasestorage.app",
+            messagingSenderId: "133830397302",
+            appId: "1:133830397302:web:bd39ecfd37cfb5ee3bfe57",
+            measurementId: "G-MGSZEFZ2MD"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const entriesCollection = collection(db, "entries");
+
+        async function checkCompatibility() {
+            const rawName1 = document.getElementById('name1').value.trim();
+            const rawName2 = document.getElementById('name2').value.trim();
+            const name1 = rawName1.toLowerCase();
+            const name2 = rawName2.toLowerCase();
+            const loader = document.getElementById('loader');
+            const resultBox = document.getElementById('resultBox');
+            const scoreDisplay = document.getElementById('score');
+            const verdictDisplay = document.getElementById('verdictMessage');
+
+            if (!name1 || !name2) {
+                alert('Please enter both names to calculate!');
+                return;
+            }
+
+            // Reset and show loader
+            resultBox.classList.remove('show');
+            loader.style.display = 'block';
+
+            // Seed algorithm based on letters so identical names always get the same fun result
+            const combinedString = name1 + name2;
+            let sum = 0;
+            for (let i = 0; i < combinedString.length; i++) {
+                sum += combinedString.charCodeAt(i);
+            }
+
+            // Map to a percentage between 35% and 100% for better fun vibes
+            const finalScore = (sum % 66) + 35;
+
+            // Pick a message based on score range
+            let verdict = "";
+            if (finalScore >= 85) verdict = "🔥 Soulmates! Unstoppable energy!";
+            else if (finalScore >= 70) verdict = "✨ High Compatibility! Pure chemistry.";
+            else if (finalScore >= 50) verdict = "🎵 Good Vibes! In perfect harmony.";
+            else verdict = "⚡ Testing the waters! Sparks fly occasionally.";
+
+            // Simulate calculation delay
+            setTimeout(async () => {
+                loader.style.display = 'none';
+                scoreDisplay.textContent = `${finalScore}%`;
+                verdictDisplay.textContent = verdict;
+                resultBox.classList.add('show');
+
+                // Log this submission to Firestore
+                try {
+                    await addDoc(entriesCollection, {
+                        name1: rawName1,
+                        name2: rawName2,
+                        score: finalScore,
+                        verdict,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (err) {
+                    console.error('Could not save entry:', err);
+                }
+            }, 1200);
+        }
+
+        async function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            historyList.innerHTML = '<div class="history-empty">Loading...</div>';
+            try {
+                const q = query(entriesCollection, orderBy('timestamp', 'desc'));
+                const snapshot = await getDocs(q);
+
+                if (snapshot.empty) {
+                    historyList.innerHTML = '<div class="history-empty">No matches submitted yet.</div>';
+                    return;
+                }
+
+                const entries = [];
+                snapshot.forEach(doc => entries.push(doc.data()));
+
+                historyList.innerHTML = entries.map(e => {
+                    const time = new Date(e.timestamp).toLocaleString();
+                    return `
+                    <div class="history-item">
+                        <span class="history-names">${escapeHtml(e.name1)} + ${escapeHtml(e.name2)}</span>
+                        <span class="history-meta">
+                            <span class="history-score">${e.score}%</span>
+                            <span class="history-time">${time}</span>
+                        </span>
+                    </div>
+                `;
+                }).join('');
+            } catch (err) {
+                historyList.innerHTML = '<div class="history-empty">Could not load history.</div>';
+                console.error('Could not load history:', err);
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ---- Admin access (client-side gate only — see notes below) ----
+        // Change this password to whatever you like before sharing the page.
+        const ADMIN_PASSWORD = 'flame-admin-2026';
+
+        function openAdminPrompt() {
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('adminError').textContent = '';
+            document.getElementById('adminOverlay').classList.add('show');
+            document.getElementById('adminPassword').focus();
+        }
+
+        function closeAdminPrompt() {
+            document.getElementById('adminOverlay').classList.remove('show');
+        }
+
+        async function checkAdminPassword() {
+            const entered = document.getElementById('adminPassword').value;
+            if (entered === ADMIN_PASSWORD) {
+                closeAdminPrompt();
+                document.getElementById('adminPanel').classList.add('show');
+                await loadHistory();
+            } else {
+                document.getElementById('adminError').textContent = 'Incorrect password.';
+            }
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('adminPanel').classList.remove('show');
+        }
+
+        // Allow pressing Enter in the password field
+        document.addEventListener('DOMContentLoaded', () => {
+            const pwField = document.getElementById('adminPassword');
+            if (pwField) {
+                pwField.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') checkAdminPassword();
+                });
+            }
+        });
+
+        // Generate ambient floating background hearts
+        function createBackgroundHearts() {
+            const hearts = ['❤️', '💖', '💕', '💘'];
+            for (let i = 0; i < 40; i++) {
+                const heart = document.createElement('div');
+                heart.className = 'heart-particle';
+                heart.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+                heart.style.left = `${Math.random() * 100}vw`;
+                heart.style.fontSize = `${Math.random() * 20 + 10}px`;
+                heart.style.setProperty('--duration', `${Math.random() * 6 + 6}s`);
+                heart.style.animationDelay = `${Math.random() * 5}s`;
+                document.body.appendChild(heart);
+            }
+        }
+        createBackgroundHearts();
+
+        // Expose functions used by inline onclick/onload handlers to global scope,
+        // since this is a module script (module-scoped by default).
+        window.checkCompatibility = checkCompatibility;
+        window.openAdminPrompt = openAdminPrompt;
+        window.closeAdminPrompt = closeAdminPrompt;
+        window.checkAdminPassword = checkAdminPassword;
+        window.closeAdminPanel = closeAdminPanel;
+    </script>
+</body>
+</html>
